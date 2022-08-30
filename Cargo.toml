@@ -18,7 +18,8 @@ hazy = "0.1"
 # Include unmerged changes to support flushing and various async improvements.
 libhoney-rust = { git = "https://github.com/ramosbugs/libhoney-rust", rev = "98710516cb63d3393d26a22d5493a421c550525a" }
 log = "0.4"
-opentelemetry = "0.17"
+# Adds `SpanProcessor::is_exporter` for upstream filtering
+opentelemetry = { git = "https://github.com/fasterthanlime/opentelemetry-rust", rev = "3d9a48a49517e00993baee65175b29b7cf91467e" }
 serde_json = "1.0"
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["rt"] }
