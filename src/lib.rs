@@ -342,11 +342,6 @@ impl SpanProcessor for HoneycombSpanProcessor {
             ))
         }
     }
-
-    fn is_exporter(&self) -> bool {
-        debug!("SpanProcessor::is_exporter");
-        true
-    }
 }
 
 /// Port of https://github.com/honeycombio/opentelemetry-exporter-python/blob/133ab6d7c5362ee24e4277264cf9a7634a5f6394/opentelemetry/ext/honeycomb/__init__.py#L36.
