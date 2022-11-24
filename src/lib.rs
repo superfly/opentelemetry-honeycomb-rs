@@ -83,13 +83,25 @@ impl HoneycombApiKey {
     }
 }
 
+impl<T> From<T> for HoneycombApiKey
+where
+    T: Into<String>,
+{
+    fn from(s: T) -> Self {
+        Self::new(s.into())
+    }
+}
+
 /// Create a new exporter pipeline builder.
-pub fn new_pipeline<B>(api_key: HoneycombApiKey, dataset: String) -> HoneycombPipelineBuilder
+pub fn new_pipeline<B>(
+    api_key: impl Into<HoneycombApiKey>,
+    dataset: String,
+) -> HoneycombPipelineBuilder
 where
     B: Fn(BoxFuture<()>) + Send + Sync + 'static,
 {
     HoneycombPipelineBuilder {
-        api_key,
+        api_key: api_key.into(),
         block_on: Arc::new(|f| tokio::runtime::Handle::current().block_on(f)),
         dataset,
         trace_config: None,
