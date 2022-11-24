@@ -93,13 +93,10 @@ where
 }
 
 /// Create a new exporter pipeline builder.
-pub fn new_pipeline<B>(
+pub fn new_pipeline(
     api_key: impl Into<HoneycombApiKey>,
     dataset: String,
-) -> HoneycombPipelineBuilder
-where
-    B: Fn(BoxFuture<()>) + Send + Sync + 'static,
-{
+) -> HoneycombPipelineBuilder {
     HoneycombPipelineBuilder {
         api_key: api_key.into(),
         block_on: Arc::new(|f| tokio::runtime::Handle::current().block_on(f)),
@@ -118,20 +115,23 @@ where
     }
 }
 
+pub type BlockOn = Arc<dyn Fn(BoxFuture<()>) + Send + Sync>;
+pub type OnSpanStart = Arc<dyn Fn(&mut Span, &Context) + Send + Sync>;
+
 /// Pipeline builder
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct HoneycombPipelineBuilder {
     api_key: HoneycombApiKey,
     #[derivative(Debug = "ignore")]
-    block_on: Arc<dyn Fn(BoxFuture<()>) + Send + Sync>,
+    block_on: BlockOn,
     dataset: String,
     #[derivative(Debug = "ignore")]
     executor: FutureExecutor,
     trace_config: Option<opentelemetry::sdk::trace::Config>,
     transmission_options: libhoney::transmission::Options,
     #[derivative(Debug = "ignore")]
-    on_span_start: Option<Arc<dyn Fn(&mut Span, &Context) + Send + Sync>>,
+    on_span_start: Option<OnSpanStart>,
 }
 impl HoneycombPipelineBuilder {
     /// Assign the SDK trace configuration.
@@ -161,10 +161,7 @@ impl HoneycombPipelineBuilder {
     /// Sets an optional function to be run every time a span starts.
     ///
     /// This allows manipulation of the span based on the current `Context`.
-    pub fn with_on_span_start(
-        mut self,
-        on_span_start: Arc<dyn Fn(&mut Span, &Context) + Send + Sync>,
-    ) -> Self {
+    pub fn with_on_span_start(mut self, on_span_start: OnSpanStart) -> Self {
         self.on_span_start = Some(on_span_start);
         self
     }
@@ -301,7 +298,7 @@ struct HoneycombSpanProcessor {
     #[derivative(Debug = "ignore")]
     exporter: Mutex<HoneycombSpanExporter>,
     #[derivative(Debug = "ignore")]
-    on_span_start: Option<Arc<dyn Fn(&mut Span, &Context) + Send + Sync>>,
+    on_span_start: Option<OnSpanStart>,
 }
 impl SpanProcessor for HoneycombSpanProcessor {
     fn on_start(&self, span: &mut Span, cx: &Context) {
@@ -351,7 +348,7 @@ struct HoneycombSpanExporter {
     #[derivative(Debug = "ignore")]
     client: Arc<RwLock<Option<Client<Transmission>>>>,
     #[derivative(Debug = "ignore")]
-    block_on: Arc<dyn Fn(BoxFuture<()>) + Send + Sync>,
+    block_on: BlockOn,
 }
 impl HoneycombSpanExporter {
     fn new_trace_event<I>(
