@@ -43,7 +43,6 @@ use futures::future::BoxFuture;
 use hazy::OpaqueDebug;
 use libhoney::transmission::Transmission;
 use libhoney::{Client, Event, FieldHolder, Response, Value};
-use log::{debug, error, trace};
 use opentelemetry::sdk::export::ExportError;
 use opentelemetry::sdk::trace::{Span, SpanProcessor};
 use opentelemetry::sdk::Resource;
@@ -55,6 +54,7 @@ use opentelemetry::{
 use opentelemetry::{Array, Context, KeyValue};
 use serde_json::Number;
 use thiserror::Error;
+use tracing::{debug, error, trace};
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -173,6 +173,7 @@ impl HoneycombPipelineBuilder {
         (HoneycombFlusher, opentelemetry::sdk::trace::Tracer),
         Box<dyn std::error::Error + Send + Sync>,
     > {
+        debug!("Installing honeycomb pipeline");
         let client = libhoney::init(libhoney::Config {
             executor: self.executor,
             options: libhoney::client::Options {
@@ -205,6 +206,7 @@ impl HoneycombPipelineBuilder {
             None,
         );
         let _ = opentelemetry::global::set_tracer_provider(provider);
+        debug!("Ok we set the global tracer provider");
 
         Ok((
             HoneycombFlusher {
@@ -223,8 +225,9 @@ pub struct HoneycombFlusher {
 }
 impl HoneycombFlusher {
     pub async fn flush(&self) -> Result<(), HoneycombExporterError> {
-        log::debug!("Flushing Honeycomb client");
+        debug!("Flushing Honeycomb client");
         let mut guard = self.client.write().await;
+        debug!("Flushing Honeycomb client (acquired lock)");
         guard
             .as_mut()
             .ok_or(HoneycombExporterError::Shutdown)?
@@ -302,12 +305,14 @@ struct HoneycombSpanProcessor {
 }
 impl SpanProcessor for HoneycombSpanProcessor {
     fn on_start(&self, span: &mut Span, cx: &Context) {
+        debug!("SpanProcessor::on_start");
         if let Some(ref on_span_start) = self.on_span_start {
             (on_span_start)(span, cx)
         }
     }
 
     fn on_end(&self, span: SpanData) {
+        debug!("SpanProcessor::on_end");
         if let Ok(mut exporter) = self.exporter.lock() {
             // Libhoney implements its own batching, so we just export the span immediately instead
             // of double-batching (which would require double-flushing, etc.).
@@ -321,11 +326,13 @@ impl SpanProcessor for HoneycombSpanProcessor {
     }
 
     fn force_flush(&self) -> TraceResult<()> {
+        debug!("SpanProcessor::force_flush");
         // This processor does no batching, so nothing to flush.
         Ok(())
     }
 
     fn shutdown(&mut self) -> TraceResult<()> {
+        debug!("SpanProcessor::shutdown");
         if let Ok(mut exporter) = self.exporter.lock() {
             exporter.shutdown();
             Ok(())
@@ -337,6 +344,7 @@ impl SpanProcessor for HoneycombSpanProcessor {
     }
 
     fn is_exporter(&self) -> bool {
+        debug!("SpanProcessor::is_exporter");
         true
     }
 }
@@ -395,6 +403,7 @@ impl HoneycombSpanExporter {
 
 impl SpanExporter for HoneycombSpanExporter {
     fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
+        debug!("Export was called with a batch");
         let client = self.client.clone();
         Box::pin(async move {
             debug!("Exporting batch of {} spans", batch.len());
@@ -543,6 +552,7 @@ impl SpanExporter for HoneycombSpanExporter {
 
 impl Drop for HoneycombSpanExporter {
     fn drop(&mut self) {
+        debug!("Dropping HoneycombSpanExporter");
         self.shutdown();
     }
 }
@@ -554,6 +564,7 @@ impl futures::task::Spawn for TokioExecutor {
         &self,
         future: futures::task::FutureObj<'static, ()>,
     ) -> Result<(), futures::task::SpawnError> {
+        debug!("We're spawning a future");
         tokio::spawn(future);
         Ok(())
     }
