@@ -10,7 +10,6 @@
 //!
 //! ### Example
 //! ```rust,no_run
-//! use async_executors::TokioTpBuilder;
 //! use opentelemetry::trace::Tracer;
 //! use opentelemetry::global::shutdown_tracer_provider;
 //! use opentelemetry_honeycomb::HoneycombApiKey;
@@ -18,12 +17,6 @@
 //! use std::sync::Arc;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-//!     let mut builder = TokioTpBuilder::new();
-//!     builder
-//!         .tokio_builder()
-//!         .enable_io();
-//!     let executor = Arc::new(builder.build().expect("Failed to build Tokio executor"));
-//!
 //!     // Create a new instrumentation pipeline.
 //!     let (_flusher, tracer) = opentelemetry_honeycomb::new_pipeline(
 //!         HoneycombApiKey::new(
@@ -32,8 +25,6 @@
 //!         ),
 //!         std::env::var("HONEYCOMB_DATASET")
 //!             .expect("Missing or invalid environment variable HONEYCOMB_DATASET"),
-//!         executor.clone(),
-//!         move |fut| executor.block_on(fut),
 //!     ).install().expect("Failed to install OpenTelemetry pipeline");
 //!
 //!     tracer.in_span("doing_work", |cx| {
@@ -93,20 +84,14 @@ impl HoneycombApiKey {
 }
 
 /// Create a new exporter pipeline builder.
-pub fn new_pipeline<B>(
-    api_key: HoneycombApiKey,
-    dataset: String,
-    executor: FutureExecutor,
-    block_on: B,
-) -> HoneycombPipelineBuilder
+pub fn new_pipeline<B>(api_key: HoneycombApiKey, dataset: String) -> HoneycombPipelineBuilder
 where
     B: Fn(BoxFuture<()>) + Send + Sync + 'static,
 {
     HoneycombPipelineBuilder {
         api_key,
-        block_on: Arc::new(block_on),
+        block_on: Arc::new(|f| tokio::runtime::Handle::current().block_on(f)),
         dataset,
-        executor,
         trace_config: None,
         transmission_options: libhoney::transmission::Options {
             user_agent_addition: Some(format!(
@@ -117,6 +102,7 @@ where
             ..Default::default()
         },
         on_span_start: None,
+        executor: Arc::new(TokioExecutor),
     }
 }
 
@@ -257,11 +243,12 @@ impl ExportError for HoneycombExporterError {
 }
 
 fn timestamp_from_system_time(ts: SystemTime) -> DateTime<Utc> {
-    Utc.timestamp_millis(
+    Utc.timestamp_millis_opt(
         ts.duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_millis() as u64 as i64,
     )
+    .unwrap()
 }
 
 fn otel_value_to_serde_json(value: opentelemetry::Value) -> Value {
@@ -548,5 +535,17 @@ impl SpanExporter for HoneycombSpanExporter {
 impl Drop for HoneycombSpanExporter {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+struct TokioExecutor;
+
+impl futures::task::Spawn for TokioExecutor {
+    fn spawn_obj(
+        &self,
+        future: futures::task::FutureObj<'static, ()>,
+    ) -> Result<(), futures::task::SpawnError> {
+        tokio::spawn(future);
+        Ok(())
     }
 }
