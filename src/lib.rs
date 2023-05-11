@@ -203,6 +203,7 @@ impl HoneycombPipelineBuilder {
         let tracer = provider.versioned_tracer(
             "opentelemetry-honeycomb-rs",
             Some(env!("CARGO_PKG_VERSION")),
+            None::<&str>,
             None,
         );
         let _ = opentelemetry::global::set_tracer_provider(provider);
